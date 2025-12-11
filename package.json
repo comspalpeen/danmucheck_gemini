@@ -1,0 +1,17 @@
+{
+  "name": "danmucheck_gemini",
+  "version": "1.0.0",
+  "main": "a_bogus.js",
+  "devDependencies": {
+    "sm-crypto": "^0.3.13",
+    "webpack": "^5.103.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

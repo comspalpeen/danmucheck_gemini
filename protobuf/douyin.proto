@@ -1,0 +1,758 @@
+syntax = "proto3";
+package douyin;
+
+// ========================================================================
+// 网络层 / 外层结构
+// ========================================================================
+
+message PushFrame {
+  uint64 seqId = 1;
+  uint64 logId = 2;
+  uint64 service = 3;
+  uint64 method = 4;
+  repeated HeadersList headersList = 5;
+  string payloadEncoding = 6;
+  string payloadType = 7;
+  bytes payload = 8;
+}
+
+message Message {
+  string method = 1;
+  bytes payload = 2;
+  int64 msgId = 3;
+  int32 msgType = 4;
+  int64 offset = 5;
+  bool needWrdsStore = 6;
+  int64 wrdsVersion = 7;
+  string wrdsSubKey = 8;
+}
+
+message Response {
+  repeated Message messagesList = 1;
+  string cursor = 2;
+  uint64 fetchInterval = 3;
+  uint64 now = 4;
+  string internalExt = 5;
+  uint32 fetchType = 6;
+  map<string, string> routeParams = 7;
+  uint64 heartbeatDuration = 8;
+  bool needAck = 9;
+  string pushServer = 10;
+  string liveCursor = 11;
+  bool historyNoMore = 12;
+}
+
+message HeadersList {
+  string key = 1;
+  string value = 2;
+}
+
+// ========================================================================
+// 基础通用组件
+// ========================================================================
+
+message Common {
+  string method = 1;
+  uint64 msgId = 2;
+  uint64 roomId = 3;
+  uint64 createTime = 4;
+  uint32 monitor = 5;
+  bool isShowMsg = 6;
+  string describe = 7;
+  uint64 foldType = 9;
+  uint64 anchorFoldType = 10;
+  uint64 priorityScore = 11;
+  string logId = 12;
+  string msgProcessFilterK = 13;
+  string msgProcessFilterV = 14;
+  User user = 15;
+  uint64 anchorFoldTypeV2 = 17;
+  uint64 processAtSeiTimeMs = 18;
+  uint64 randomDispatchMs = 19;
+  bool isDispatch = 20;
+  uint64 channelId = 21;
+  uint64 diffSei2absSecond = 22;
+  uint64 anchorFoldDuration = 23;
+}
+
+message User {
+  uint64 id = 1;
+  uint64 shortId = 2;
+  string nickName = 3;
+  uint32 gender = 4;
+  string Signature = 5;
+  uint32 Level = 6;
+  uint64 Birthday = 7;
+  string Telephone = 8;
+  Image AvatarThumb = 9;
+  Image AvatarMedium = 10;
+  Image AvatarLarge = 11;
+  bool Verified = 12;
+  uint32 Experience = 13;
+  string city = 14;
+  int32 Status = 15;
+  uint64 CreateTime = 16;
+  uint64 ModifyTime = 17;
+  uint32 Secret = 18;
+  string ShareQrcodeUri = 19;
+  uint32 IncomeSharePercent = 20;
+  repeated Image BadgeImageList = 21;
+  FollowInfo FollowInfo = 22;
+  PayGrade PayGrade = 23;
+  FansClub FansClub = 24;
+  string SpecialId = 26;
+  Image AvatarBorder = 27;
+  Image Medal = 28;
+  repeated Image RealTimeIconsList = 29;
+  string displayId = 38;
+  string secUid = 46;
+  uint64 fanTicketCount = 1022;
+  string idStr = 1028;
+  uint32 ageRange = 1045;
+}
+
+message Image {
+  repeated string urlListList = 1;
+  string uri = 2;
+  uint64 height = 3;
+  uint64 width = 4;
+  string avgColor = 5;
+  uint32 imageType = 6;
+  string openWebUrl = 7;
+  ImageContent content = 8;
+  bool isAnimated = 9;
+}
+
+message ImageContent {
+  string name = 1;
+  string fontColor = 2;
+  uint64 level = 3;
+  string alternativeText = 4;
+}
+
+message FollowInfo {
+  uint64 followingCount = 1;
+  uint64 followerCount = 2;
+  uint64 followStatus = 3;
+  uint64 pushStatus = 4;
+  string remarkName = 5;
+  string followerCountStr = 6;
+  string followingCountStr = 7;
+}
+
+message PayGrade {
+  int64 totalDiamondCount = 1;
+  Image diamondIcon = 2;
+  string name = 3;
+  Image icon = 4;
+  string nextName = 5;
+  int64 level = 6;
+  Image nextIcon = 7;
+  int64 nextDiamond = 8;
+  int64 nowDiamond = 9;
+  int64 thisGradeMinDiamond = 10;
+  int64 thisGradeMaxDiamond = 11;
+  int64 payDiamondBak = 12;
+  string gradeDescribe = 13;
+  repeated GradeIcon gradeIconList = 14;
+  int64 screenChatType = 15;
+  Image imIcon = 16;
+  Image imIconWithLevel = 17;
+  Image liveIcon = 18;
+  Image newImIconWithLevel = 19;
+  Image newLiveIcon = 20;
+  int64 upgradeNeedConsume = 21;
+  string nextPrivileges = 22;
+  Image background = 23;
+  Image backgroundBack = 24;
+  int64 score = 25;
+  GradeBuffInfo buffInfo = 26;
+  string gradeBanner = 1001;
+  Image profileDialogBg = 1002;
+  Image profileDialogBgBack = 1003;
+}
+
+message GradeIcon {
+  Image icon = 1;
+  int64 iconDiamond = 2;
+  int64 level = 3;
+  string levelStr = 4;
+}
+
+message GradeBuffInfo {}
+
+message FansClub {
+  FansClubData data = 1;
+  map<int32, FansClubData> preferData = 2;
+}
+
+message FansClubData {
+  string clubName = 1;
+  int32 level = 2;
+  int32 userFansClubStatus = 3;
+  UserBadge badge = 4;
+  repeated int64 availableGiftIds = 5;
+  int64 anchorId = 6;
+}
+
+message UserBadge {
+  map<int32, Image> icons = 1;
+  string title = 2;
+}
+
+// ========================================================================
+// 业务消息 (Business Logic Messages)
+// ========================================================================
+
+message ChatMessage {
+  Common common = 1;
+  User user = 2;
+  string content = 3;
+  bool visibleToSender = 4;
+  Image backgroundImage = 5;
+  string fullScreenTextColor = 6;
+  Image backgroundImageV2 = 7;
+  PublicAreaCommon publicAreaCommon = 9;
+  Image giftImage = 10;
+  uint64 agreeMsgId = 11;
+  uint32 priorityLevel = 12;
+  LandscapeAreaCommon landscapeAreaCommon = 13;
+  uint64 eventTime = 15;
+  bool sendReview = 16;
+  bool fromIntercom = 17;
+  bool intercomHideUserCard = 18;
+  repeated string chatTagsList = 19;
+  string chatBy = 20;
+  uint32 individualChatPriority = 21;
+  Text rtfContent = 22;
+}
+
+message GiftMessage {
+  Common common = 1;
+  uint64 giftId = 2;
+  uint64 groupCount = 4;
+  uint64 repeatCount = 5;
+  uint64 comboCount = 6;
+  User user = 7;
+  User toUser = 8;
+  uint32 repeatEnd = 9;
+  TextEffect textEffect = 10;
+  uint64 groupId = 11;
+  uint64 incomeTaskgifts = 12;
+  GiftIMPriority priority = 14;
+  GiftStruct gift = 15;
+  string logId = 16;
+  uint64 sendType = 17;
+  PublicAreaCommon publicAreaCommon = 18;
+  Text trayDisplayText = 19;
+  uint64 bannedDisplayEffects = 20;
+  bool displayForSelf = 25;
+  string interactGiftInfo = 26;
+  string diyItemInfo = 27;
+  repeated uint64 minAssetSetList = 28;
+  uint64 totalCount = 29;
+  uint32 clientGiftSource = 30;
+  repeated uint64 toUserIdsList = 32;
+  uint64 sendTime = 33;
+  uint64 forceDisplayEffects = 34;
+  string traceId = 35;
+  uint64 effectDisplayTs = 36;
+  GiftTrayInfo trayInfo = 21;
+}
+message GiftTrayInfo {  
+  // [修复] 补充 Field 2
+  Image tray_base_img = 2;
+  Text title = 4;
+  // [修复] 补充 Field 5
+  uint64 tray_type = 5;
+  // [修复] 补充 Field 6
+  Image tray_right_img = 6;
+  Image tray_image_base = 9;
+  uint64 duration = 12;
+  
+  message TrayEffect {
+      Image image = 1;
+      uint64 duration = 2;
+          // [关键修复] 原 string scheme_url，因新日志中为 int64，导致解析失败。修改为 int64。
+
+      uint64 Time = 5; 
+
+  }
+  TrayEffect tray_effect = 15;
+}
+message GiftStruct {
+  Image image = 1;
+  string describe = 2;
+  bool notify = 3;
+  uint64 duration = 4;
+  uint64 id = 5;
+  bool forLinkmic = 7;
+  bool doodle = 8;
+  bool forFansclub = 9;
+  bool combo = 10;
+  uint32 type = 11;
+  uint32 diamondCount = 12;
+  bool isDisplayedOnPanel = 13;
+  uint64 primaryEffectId = 14;
+  Image giftLabelIcon = 15;
+  string name = 16;
+  string region = 17;
+  string manual = 18;
+  bool forCustom = 19;
+  Image icon = 21;
+  uint32 actionType = 22;
+}
+
+message GiftIMPriority {
+  repeated uint64 queueSizesList = 1;
+  uint64 selfQueuePriority = 2;
+  uint64 priority = 3;
+}
+
+message MemberMessage {
+  Common common = 1;
+  User user = 2;
+  uint64 memberCount = 3;
+  User operator = 4;
+  bool isSetToAdmin = 5;
+  bool isTopUser = 6;
+  uint64 rankScore = 7;
+  uint64 topUserNo = 8;
+  uint64 enterType = 9;
+  uint64 action = 10;
+  string actionDescription = 11;
+  uint64 userId = 12;
+  EffectConfig effectConfig = 13;
+  string popStr = 14;
+  EffectConfig enterEffectConfig = 15;
+  Image backgroundImage = 16;
+  Image backgroundImageV2 = 17;
+  Text anchorDisplayText = 18;
+  PublicAreaCommon publicAreaCommon = 19;
+  uint64 userEnterTipType = 20;
+  uint64 anchorEnterTipType = 21;
+}
+
+message LikeMessage {
+  Common common = 1;
+  uint64 count = 2;
+  uint64 total = 3;
+  uint64 color = 4;
+  User user = 5;
+  string icon = 6;
+  DoubleLikeDetail doubleLikeDetail = 7;
+  DisplayControlInfo displayControlInfo = 8;
+  uint64 linkmicGuestUid = 9;
+  string scene = 10;
+  PicoDisplayInfo picoDisplayInfo = 11;
+}
+
+message DoubleLikeDetail {
+  bool doubleFlag = 1;
+  uint32 seqId = 2;
+  uint32 renewalsNum = 3;
+  uint32 triggersNum = 4;
+}
+
+message DisplayControlInfo {
+  bool showText = 1;
+  bool showIcons = 2;
+}
+
+message PicoDisplayInfo {
+  uint64 comboSumCount = 1;
+  string emoji = 2;
+  Image emojiIcon = 3;
+  string emojiText = 4;
+}
+
+message SocialMessage {
+  Common common = 1;
+  User user = 2;
+  uint64 shareType = 3;
+  uint64 action = 4;
+  string shareTarget = 5;
+  uint64 followCount = 6;
+  PublicAreaCommon publicAreaCommon = 7;
+}
+
+message RoomUserSeqMessage {
+  Common common = 1;
+  repeated RoomUserSeqMessageContributor ranksList = 2;
+  int64 total = 3;
+  string popStr = 4;
+  repeated RoomUserSeqMessageContributor seatsList = 5;
+  int64 popularity = 6;
+  int64 totalUser = 7;
+  string totalUserStr = 8;
+  string totalStr = 9;
+  string onlineUserForAnchor = 10;
+  string totalPvForAnchor = 11;
+  string upRightStatsStr = 12;
+  string upRightStatsStrComplete = 13;
+}
+
+message RoomUserSeqMessageContributor {
+  uint64 score = 1;
+  User user = 2;
+  uint64 rank = 3;
+  uint64 delta = 4;
+  bool isHidden = 5;
+  string scoreDescription = 6;
+  string exactlyScore = 7;
+}
+
+message ControlMessage {
+  Common common = 1;
+  int32 status = 2;
+}
+
+// PK结束/结算消息 (WebcastLinkMicBattleFinishMethod)
+// 基于抓包数据 1vs7.txt, 2v2.txt 修正
+message LinkMicBattleFinishMethod {
+  Common common = 1;
+  BattleFinishInfo info = 2;   
+  
+  // Field 3: [修正] 贡献榜 (Contributors)
+  // 结构: anchor_id -> list of items (扁平结构)
+  repeated BattleContributors contributors = 3; 
+  
+  // Field 4: 分数结算
+  repeated BattleScore scores = 4;  
+  
+  // Field 12: [修正] 主播信息 (Anchors)
+  // 结构: anchor_id -> list of items (嵌套结构: item -> user)
+  repeated BattleArmy anchors = 12;
+  
+  BattleSkinConfig skin_config = 15;
+  string event_tracking_info = 18;
+}
+
+message BattleFinishInfo {
+  uint64 battle_id = 2;
+  uint64 start_time_ms = 3;
+  uint64 duration = 4;
+  BattleTitleConfig title_config = 17;
+  BattlePunishConfig punish_config = 18;
+  string battle_config_json = 39;
+  uint64 status = 40;
+}
+  
+
+// 战绩/分数详情 (对应 Field 4)
+message BattleScore {
+  uint64 score = 1;             // 单人/单主播分数
+  uint64 user_id = 2;           // 主播ID
+  uint64 rank = 16;             // 排名
+  string description = 18;      // 描述 (如 "落后1234", "领先1234")
+  uint64 team_total_score = 19; // 团队总分
+  uint32 win_status = 20;       // 1=胜, 2=败/平
+  uint32 status_21 = 21;
+  uint64 part_of_team_id = 24;  // 所属团队ID/标识
+}
+
+// 队伍/主播信息 (对应 Field 3)
+message BattleArmy {
+  uint64 anchor_id = 1; 
+  // Field 2: 主播列表
+  repeated BattleAnchorItem list = 2; 
+  string anchor_id_str = 3;
+}
+message BattleAnchorItem {
+  // 这是一个嵌套对象
+  BattleUserInfo user = 1; 
+  uint64 score = 2; // 主播可能有单独的分数或状态
+}
+// 对应 Field 3: 贡献榜列表 (按 Team/Anchor ID 分组)
+message BattleContributors {
+  uint64 anchor_id = 1; 
+  // Field 2: 贡献者列表 (大哥)
+  repeated BattleContributorItem list = 2; 
+  string anchor_id_str = 3;
+}
+// 贡献榜单项 (大哥)
+message BattleContributorItem {
+  uint64 id = 1;          // 1. uid 
+  string nickname = 2;    // 2. nickname 
+  Image avatar = 3;       // 3. 头像 
+  uint64 score = 4;       // 4. 得分 
+  string id_str = 5;      // 5. id_str 
+  
+  // 可能存在的其他字段
+  uint64 rank = 6;
+  uint64 delta = 10;
+}
+message BattleUserInfo {
+  uint64 id = 1;
+  string nickname = 2;
+  Image avatar_thumb = 3;
+}
+
+// 详细贡献者列表 (对应 Field 12)
+message BattleResultContributor {
+    uint64 anchor_id = 1;
+    repeated BattleResultContributorItem items = 2;
+}
+
+message BattleResultContributorItem {
+    User user = 1;
+    // Field 3 是复杂结构，有时是 map，有时包含 Tag
+    // 在 1vs7.txt 中是 {1:1, 2:3}
+    BattleContributorTag tag_map = 3; 
+    uint64 rank_index = 8; // 排名/队伍索引
+    uint64 delta = 10;
+    BattleRankSeasonBadge season_badge = 12; // 赛季段位勋章
+}
+
+message BattleContributorTag {
+    uint64 key = 1;
+    uint64 value = 2;
+}
+
+message BattleRankSeasonBadge {
+    Image icon_small = 1;
+    Image icon_big = 2;
+    string title_str = 3; // e.g. "钻石1星"
+    string url_str = 4;
+}
+
+// PK 视觉配置 (对应 Field 17 in Info)
+message BattleTitleConfig {
+    Image icon = 1;
+    string scheme_url = 3;
+    Image new_icon = 7;
+}
+
+// 惩罚配置 (对应 Field 18)
+message BattlePunishConfig {
+  Image icon = 1;
+  string content = 2; // "投票结束", "PK结束"
+  string scheme_url = 3;
+  Image new_icon = 7;
+}
+
+// 皮肤/动画配置 (对应 Field 15 in Finish)
+message BattleSkinConfig {
+    string start_animation_url = 1;
+}
+
+// PK 设置 (对应 Field 4 in Start)
+message BattleSetting {
+  uint64 battle_id = 1;
+  string title = 2;
+  string scheme_url = 3;
+  string scheme_url_extra = 4;
+  uint64 duration = 5;
+}
+
+// ========================================================================
+// 杂项 / 辅助结构
+// ========================================================================
+
+message TextEffect {
+  TextEffectDetail portrait = 1;
+  TextEffectDetail landscape = 2;
+}
+
+message TextEffectDetail {
+  Text text = 1;
+  uint32 textFontSize = 2;
+  Image background = 3;
+  uint32 start = 4;
+  uint32 duration = 5;
+  uint32 x = 6;
+  uint32 y = 7;
+  uint32 width = 8;
+  uint32 height = 9;
+  uint32 shadowDx = 10;
+  uint32 shadowDy = 11;
+  uint32 shadowRadius = 12;
+  string shadowColor = 13;
+  string strokeColor = 14;
+  uint32 strokeWidth = 15;
+}
+
+message Text {
+  string key = 1;
+  string defaultPatter = 2;
+  TextFormat defaultFormat = 3;
+  repeated TextPiece piecesList = 4;
+}
+
+message TextPiece {
+  bool type = 1;
+  TextFormat format = 2;
+  string stringValue = 3;
+  TextPieceUser userValue = 4;
+  TextPieceGift giftValue = 5;
+  TextPieceHeart heartValue = 6;
+  TextPiecePatternRef patternRefValue = 7;
+  TextPieceImage imageValue = 8;
+}
+
+message TextPieceImage {
+  Image image = 1;
+  float scalingRate = 2;
+}
+
+message TextPiecePatternRef {
+  string key = 1;
+  string defaultPattern = 2;
+}
+
+message TextPieceHeart {
+  string color = 1;
+}
+
+message TextPieceGift {
+  uint64 giftId = 1;
+  PatternRef nameRef = 2;
+}
+
+message PatternRef {
+  string key = 1;
+  string defaultPattern = 2;
+}
+
+message TextPieceUser {
+  User user = 1;
+  bool withColon = 2;
+}
+
+message TextFormat {
+  string color = 1;
+  bool bold = 2;
+  bool italic = 3;
+  uint32 weight = 4;
+  uint32 italicAngle = 5;
+  uint32 fontSize = 6;
+  bool useHeighLightColor = 7;
+  bool useRemoteClor = 8;
+}
+
+message EffectConfig {
+  uint64 type = 1;
+  Image icon = 2;
+  uint64 avatarPos = 3;
+  Text text = 4;
+  Image textIcon = 5;
+  uint32 stayTime = 6;
+  uint64 animAssetId = 7;
+  Image badge = 8;
+  repeated uint64 flexSettingArrayList = 9;
+  Image textIconOverlay = 10;
+  Image animatedBadge = 11;
+  bool hasSweepLight = 12;
+  repeated uint64 textFlexSettingArrayList = 13;
+  uint64 centerAnimAssetId = 14;
+  Image dynamicImage = 15;
+  map<string, string> extraMap = 16;
+  uint64 mp4AnimAssetId = 17;
+  uint64 priority = 18;
+  uint64 maxWaitTime = 19;
+  string dressId = 20;
+  uint64 alignment = 21;
+  uint64 alignmentOffset = 22;
+}
+
+message PublicAreaCommon {
+  Image userLabel = 1;
+  uint64 userConsumeInRoom = 2;
+  uint64 userSendGiftCntInRoom = 3;
+}
+
+message LandscapeAreaCommon {
+  bool showHead = 1;
+  bool showNickname = 2;
+  bool showFontColor = 3;
+  repeated string colorValueList = 4;
+  repeated CommentTypeTag commentTypeTagsList = 5;
+}
+
+enum CommentTypeTag {
+  COMMENTTYPETAGUNKNOWN = 0;
+  COMMENTTYPETAGSTAR = 1;
+}
+
+// 房间状态统计
+message RoomStatsMessage {
+  Common common = 1;
+  string displayShort = 2;
+  string displayMiddle = 3;
+  string displayLong = 4;
+  int64 displayValue = 5;
+  int64 displayVersion = 6;
+  bool incremental = 7;
+  bool isHidden = 8;
+  int64 total = 9;
+  int64 displayType = 10;
+}
+
+// 直播排行榜
+message RoomRankMessage {
+  Common common = 1;
+  repeated RoomRank ranksList = 2;
+  
+  message RoomRank {
+    User user = 1;
+    string scoreStr = 2;
+    bool profileHidden = 3;
+  }
+}
+
+// 粉丝团消息
+message FansclubMessage {
+  Common commonInfo = 1;
+  int32 type = 2;
+  string content = 3;
+  User user = 4;
+}
+
+message UpdateFanTicketMessage {
+  Common common = 1;
+  string roomFanTicketCountText = 2;
+  uint64 roomFanTicketCount = 3;
+  bool forceUpdate = 4;
+}
+
+message RoomStreamAdaptationMessage {
+  Common common = 1;
+  int32 adaptationType = 2;
+  float adaptationHeightRatio = 3;
+  float adaptationBodyCenterRatio = 4;
+}
+message WebcastLotteryEventNewMessage {
+  Common common = 1;
+  uint64 lotteryId = 2;          // 福袋ID
+  uint64 status = 3;             // 状态
+  uint64 startTime = 4;          // 开始时间戳
+  uint64 endTime = 5;            // 结束时间戳
+  uint64 calculationTime = 6;    // 开奖计算时间
+  string rulePageUrl = 7;        // 规则URL
+  uint64 eventType = 8;          // 事件类型: 1=虚拟/抖币, 2=实物
+  // Field 9 skipped
+  bytes extraBytes = 10;         // 额外数据
+  repeated LotteryRuleInfo ruleInfo = 11; // 规则列表
+  uint64 lotteryType = 12;       // 抽奖类型
+  uint64 winnerCount = 13;       // 中奖人数
+  uint64 currentStock = 14;      // 当前库存
+  // 15-17 skipped
+  string prizeName = 18;         // 奖品名称标题, e.g. "苹果17promax2T一台"
+  string prizeDescription = 19;  // [新增] 奖品详细描述/副标题 (实物福袋出现)
+  uint64 countdown = 20;         // 倒计时/计数器
+  repeated LotteryContent contentList = 21; // 口令/参与内容
+}
+
+// 对应 Field 11: 规则键值对
+message LotteryRuleInfo {
+  string key = 1;   // e.g. "gift_info"
+  string value = 2; // e.g. "苹果17promax2T一台"
+}
+
+// 对应 Field 21: 福袋内容/标签
+message LotteryContent {
+  uint64 type = 1;      // e.g. 3 (口令)
+  string content = 2;   // e.g. "点点关注+价值1万8苹果手机"
+  uint64 value = 3;
+}
+
