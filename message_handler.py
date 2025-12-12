@@ -17,7 +17,7 @@ class MessageHandler:
         # --- 频率控制状态 ---
         self.last_like_time = 0
         self.last_seq_time = 0
-        self.THROTTLE_INTERVAL = 5 # 120秒限制
+        self.THROTTLE_INTERVAL = 2 # 120秒限制
 
     async def handle(self, method, payload):
         """
@@ -59,11 +59,17 @@ class MessageHandler:
         try:
             message = ChatMessage().parse(payload)
             user = message.user
+            
+            # --- 新增：消费等级 ---
+            pay_grade = 0
             pay_grade_icon = ""
             try:
-                if hasattr(user, 'pay_grade'): pay_grade_icon = get_safe_url(user.pay_grade.new_im_icon_with_level)
+                if hasattr(user, 'pay_grade'):
+                    pay_grade = user.pay_grade.level
+                    pay_grade_icon = get_safe_url(user.pay_grade.new_im_icon_with_level)
             except: pass
             
+            # --- 粉丝团信息 ---
             fans_club_icon = ""
             fans_club_level = 0
             try:
@@ -76,7 +82,7 @@ class MessageHandler:
             if event_ts == 0:
                 event_time_obj = datetime.now()
             else:
-                # 加上8小时转为北京时间 (假设服务器是UTC，或者你希望存UTC+8)
+                # 加上8小时转为北京时间
                 event_time_obj = datetime.utcfromtimestamp(event_ts) + timedelta(hours=8)
             
             event_time_str = event_time_obj.strftime('%Y-%m-%d %H:%M:%S')
@@ -90,6 +96,7 @@ class MessageHandler:
                 'content': message.content,
                 'sec_uid': getattr(user, 'sec_uid', ''),
                 'avatar_url': get_safe_url(user.avatar_thumb),
+                'pay_grade': pay_grade,          # ✅ 新增
                 'pay_grade_icon': pay_grade_icon,
                 'fans_club_icon': fans_club_icon,
                 'fans_club_level': fans_club_level,
@@ -106,20 +113,30 @@ class MessageHandler:
             user = message.user
             gift = message.gift
             group_id = getattr(message, 'group_id', '')          
-            pay_grade_icon = ""
             group_count = message.group_count
+            
+            # --- 新增：消费等级 ---
+            pay_grade = 0
+            pay_grade_icon = ""
             try:
-                if hasattr(user, 'pay_grade'): pay_grade_icon = get_safe_url(user.pay_grade.new_im_icon_with_level)
+                if hasattr(user, 'pay_grade'):
+                    pay_grade = user.pay_grade.level
+                    pay_grade_icon = get_safe_url(user.pay_grade.new_im_icon_with_level)
             except: pass
             
+            # --- 新增：粉丝团等级 ---
             fans_club_icon = ""
+            fans_club_level = 0
             try:
                 fans_club_icon = user.fans_club.data.badge.icons[4].url_list_list[0]
+                fans_club_level = user.fans_club.data.level
             except: pass
+            
             gift_icon_url = ""
             try:
                 gift_icon_url = message.gift.icon.url_list_list[0]
             except: pass
+            
             send_time_ms = getattr(message, 'send_time', int(time.time() * 1000))
             
             if send_time_ms == 0:
@@ -138,7 +155,9 @@ class MessageHandler:
                 'gender': getattr(user, 'gender', 0),
                 'sec_uid': getattr(user, 'sec_uid', ''),
                 'avatar_url': get_safe_url(user.avatar_thumb),
+                'pay_grade': pay_grade,          # ✅ 新增
                 'pay_grade_icon': pay_grade_icon,
+                'fans_club_level': fans_club_level, # ✅ 新增
                 'fans_club_icon': fans_club_icon,
                 'gift_icon_url' : gift_icon_url,
                 'gift_id': str(gift.id),
@@ -238,28 +257,14 @@ class MessageHandler:
                 stats['ranks'] = rank_data
 
             if self.db and self.room_id:
-                # 1. 更新覆盖型数据 (在线人数、榜单)
+                # 1. 更新覆盖型数据 (在线人数、榜单) -> rooms 表
                 await self.db.update_room_stats(self.room_id, stats)
                 
+                # 2. 更新增量数据 (累计时长等) -> rooms 表
                 if inc_data:
                     await self.db.increment_room_stats(self.room_id, inc_data)
 
-                # ✅【新增修复】：构造快照并写入 live_stats 时序集合
-                # 必须包含 room_id (MetaField) 和 created_at (TimeField)
-                stat_snapshot = {
-                    "room_id": self.room_id,       # 核心 MetaField
-                    "web_rid": self.live_id,       # 方便反查
-                    "user_count": current_online,  # 在线人数
-                    "total_user": current_total,   # 累计观看
-                    "created_at": datetime.now()   # 时间戳
-                }
-                
-                # 如果有进出场数据，也记录进去（可选）
-                if inc_data:
-                    stat_snapshot.update(inc_data)
-
-                # 调用 db.py 中的插入方法
-                await self.db.insert_live_stat(stat_snapshot)
+                # ❌ 已移除：写入 live_stats 时序集合的操作
 
         except Exception as e:
             logger.error(f"⚠️ 解析UserSeq异常: {e}")

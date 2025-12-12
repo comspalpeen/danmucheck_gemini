@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError, BulkWriteError, CollectionInvalid
 from pymongo import IndexModel, ASCENDING, DESCENDING
 from redis_client import get_redis
-
+from datetime import datetime,timedelta
 logger = logging.getLogger("DB")
 
 
@@ -39,7 +39,7 @@ class AsyncMongoDBHandler:
             # Redis 缓冲区 Key
             self.REDIS_CHAT_KEY = "buffer:chats"
             self.REDIS_GIFT_KEY = "buffer:gifts"
-            self.REDIS_STATS_KEY = "buffer:stats"  # 【新增】统计数据缓冲Key            
+            
             # 配置
             self.BATCH_SIZE = 500
             self.LAST_WRITE_TIME = time.time()
@@ -48,7 +48,7 @@ class AsyncMongoDBHandler:
             # 定义时序集合名称
             self.COL_GIFT = "live_gifts"
             self.COL_CHAT = "live_chats"
-            self.COL_STATS = "live_stats"          # 【新增】统计数据集合名           
+            
             logger.info(f"✅ [Async] MongoDB Client 初始化完成: {db_name}")
         except Exception as e:
             logger.error(f"❌ MongoDB 初始化失败: {e}")
@@ -90,19 +90,7 @@ class AsyncMongoDBHandler:
                     logger.info(f"✅ 创建时序集合: {self.COL_CHAT}")
                 except CollectionInvalid:
                     pass
-            if self.COL_STATS not in existing_cols:
-                try:
-                    await self.db.create_collection(
-                        self.COL_STATS,
-                        timeseries={
-                            "timeField": "created_at",   # 时间字段
-                            "metaField": "room_id",      # 核心索引字段 (按房间聚合)
-                            "granularity": "seconds"     # 粒度
-                        }
-                    )
-                    logger.info(f"✅ 创建时序集合: {self.COL_STATS}")
-                except CollectionInvalid:
-                    pass
+
             # --- 3. 创建常规索引 ---
             # Authors 索引
             await self.db['authors'].create_index("sec_uid", unique=True)
@@ -114,22 +102,22 @@ class AsyncMongoDBHandler:
             # PK 历史索引
             await self.db['pk_history'].create_index([("battle_id", ASCENDING), ("room_id", ASCENDING)])
             
-            # 为时序集合补充二级索引（metaField 会自动索引，这里加一些常用的过滤字段）
-            # 注意：MongoDB 5.0+ 时序集合索引限制较多，但 6.0+ 支持更多
+            # 为时序集合补充二级索引
             await self.db[self.COL_GIFT].create_index([("gift_name", ASCENDING)])
             await self.db[self.COL_CHAT].create_index([("user_id", ASCENDING)])
-            await self.db[self.COL_STATS].create_index([("room_id", ASCENDING), ("created_at", DESCENDING)])
+            
             await self.db[self.COL_GIFT].create_index([("room_id", ASCENDING), ("total_diamond_count", DESCENDING)])
             await self.db[self.COL_GIFT].create_index([("room_id", ASCENDING), ("gift_name", ASCENDING)])
             await self.db[self.COL_GIFT].create_index([("room_id", ASCENDING), ("user_name", ASCENDING)])
 
-# 弹幕：按房间+内容搜索，按房间+用户搜索
-            #await self.db[self.COL_CHAT].create_index([("room_id", ASCENDING), ("content", "text")]) # 文本索引
+            # 弹幕索引
             await self.db[self.COL_CHAT].create_index([("room_id", ASCENDING), ("created_at", DESCENDING)])
             await self.db[self.COL_CHAT].create_index([("room_id", ASCENDING), ("user_name", ASCENDING)])
             await self.db[self.COL_CHAT].create_index([("user_name", ASCENDING)])
-            await self.db['pk_history'].create_index([("room_id", ASCENDING), ("created_at", DESCENDING)])
             await self.db[self.COL_CHAT].create_index([("sec_uid", ASCENDING)]) # 用于精准搜ID
+            
+            await self.db['pk_history'].create_index([("room_id", ASCENDING), ("created_at", DESCENDING)])
+            
             logger.info("✅ 数据库集合与索引检查完成")
         except Exception as e:
             logger.error(f"❌ 索引/集合初始化失败: {e}")
@@ -140,8 +128,6 @@ class AsyncMongoDBHandler:
         try:
             update_fields = data.copy()
             
-            # 【修复】必须从 update_fields 中移除 created_at
-            # 防止与 $setOnInsert 中的 created_at 冲突
             if 'created_at' in update_fields:
                 update_fields.pop('created_at')
 
@@ -151,9 +137,6 @@ class AsyncMongoDBHandler:
             if 'start_follower_count' in update_fields:
                 insert_fields['start_follower_count'] = update_fields.pop('start_follower_count')
             else:
-                # 如果 update_fields 里没有，可能是后续更新，这里设个默认值或不处理
-                # 但为了 $setOnInsert 不报错，保持原逻辑即可，或者仅在 data 中有时处理
-                # 这里为了安全，可以给个默认值 0
                 insert_fields['start_follower_count'] = 0
 
             await self.db['rooms'].update_one(
@@ -228,7 +211,6 @@ class AsyncMongoDBHandler:
         """
         if not data: return
         try:
-            # 确保 timeField 存在且为 datetime 对象
             if isinstance(data.get('created_at'), str):
                 try:
                     data['created_at'] = datetime.now() 
@@ -237,12 +219,10 @@ class AsyncMongoDBHandler:
             elif not data.get('created_at'):
                 data['created_at'] = datetime.now()
             
-            # 序列化并推入 Redis List
             redis_client = get_redis()
             json_data = json.dumps(data, default=datetime_serializer)
             await redis_client.rpush(self.REDIS_GIFT_KEY, json_data)
             
-            # 检查是否需要批量写入
             current_time = time.time()
             buffer_size = await redis_client.llen(self.REDIS_GIFT_KEY)
             
@@ -252,22 +232,17 @@ class AsyncMongoDBHandler:
         except Exception as e:
             logger.error(f"❌ [DB] 缓冲礼物失败: {e}")
 
-# db.py -> AsyncMongoDBHandler
-
     async def flush_gift_buffer(self):
         """刷新礼物缓冲区 -> live_gifts (TimeSeries) [安全版]"""
         try:
             redis_client = get_redis()
-            # 1. 限制批次大小
             BATCH_COUNT = 1000
             
-            # 使用 lpop count 获取数据 (或者 range + trim)
             raw_data_list = await redis_client.lpop(self.REDIS_GIFT_KEY, count=BATCH_COUNT)
             
             if not raw_data_list:
                 return
 
-            # 反序列化
             current_batch = []
             for raw in raw_data_list:
                 try:
@@ -279,20 +254,14 @@ class AsyncMongoDBHandler:
             if not current_batch:
                 return
             
-            # --- 【关键】安全写入逻辑 ---
             try:
-                # 2. 先写入详细记录 (live_gifts)
                 await self.db[self.COL_GIFT].insert_many(current_batch, ordered=False)
                 
-                # ====================================================
-                # 3. 【补回】聚合统计逻辑 (更新 rooms 表的总钻石数)
-                # ====================================================
                 room_diamond_sum = {}
                 for gift in current_batch:
                     room_id = gift.get('room_id')
                     diamond = gift.get('total_diamond_count', 0)
                     
-                    # 兜底计算逻辑
                     if diamond == 0:
                         d = gift.get('diamond_count', 0)
                         c = gift.get('combo_count', 1)
@@ -302,10 +271,7 @@ class AsyncMongoDBHandler:
                     if room_id and diamond > 0:
                         room_diamond_sum[room_id] = room_diamond_sum.get(room_id, 0) + diamond
                 
-                
-                # 批量更新 rooms 表
                 for room_id, diamond_inc in room_diamond_sum.items():
-                    # 只有 room_id 是字符串时才能匹配到我们在 main/liveMan 统一过的 id
                     await self.db['rooms'].update_one(
                         {"room_id": str(room_id)}, 
                         {
@@ -314,11 +280,9 @@ class AsyncMongoDBHandler:
                         },
                         upsert=True
                     )
-                # ====================================================
 
             except Exception as e:
                 logger.error(f"❌ [DB] 批量写入礼物失败: {e}")
-                # 4. 【回滚】如果写入 MongoDB 失败，把数据塞回 Redis 防止丢失
                 if raw_data_list:
                      await redis_client.rpush(self.REDIS_GIFT_KEY, *raw_data_list)
 
@@ -334,12 +298,10 @@ class AsyncMongoDBHandler:
             if isinstance(data.get('created_at'), str) or not data.get('created_at'):
                 data['created_at'] = datetime.now()
 
-            # 序列化并推入 Redis List
             redis_client = get_redis()
             json_data = json.dumps(data, default=datetime_serializer)
             await redis_client.rpush(self.REDIS_CHAT_KEY, json_data)
             
-            # 检查是否需要批量写入
             current_time = time.time()
             buffer_size = await redis_client.llen(self.REDIS_CHAT_KEY)
             
@@ -349,7 +311,7 @@ class AsyncMongoDBHandler:
             logger.error(f"❌ [DB] 缓冲弹幕失败: {e}")
 
     async def flush_chat_buffer(self):
-        """刷新弹幕缓冲区 -> live_chats (TimeSeries) [使用 Redis]"""
+        """刷新弹幕缓冲区 -> live_chats (TimeSeries)"""
         try:
             redis_client = get_redis()
             buffer_size = await redis_client.llen(self.REDIS_CHAT_KEY)
@@ -365,17 +327,15 @@ class AsyncMongoDBHandler:
         self.LAST_WRITE_TIME = time.time()
 
         try:
-            # 原子操作：读取并清空 Redis List
             pipe = redis_client.pipeline()
-            pipe.lrange(self.REDIS_CHAT_KEY, 0, -1)  # 读取全部
-            pipe.delete(self.REDIS_CHAT_KEY)         # 清空列表
+            pipe.lrange(self.REDIS_CHAT_KEY, 0, -1)
+            pipe.delete(self.REDIS_CHAT_KEY)
             results = await pipe.execute()
             
             raw_data_list = results[0]
             if not raw_data_list:
                 return
             
-            # 反序列化 JSON 数据
             current_batch = []
             for raw in raw_data_list:
                 try:
@@ -390,14 +350,12 @@ class AsyncMongoDBHandler:
             
             await self.db[self.COL_CHAT].insert_many(current_batch, ordered=False)
             
-            # --- 聚合弹幕数量，更新到 rooms 表 ---
             room_chat_count = {}
             for chat in current_batch:
                 room_id = chat.get('room_id')
                 if room_id:
                     room_chat_count[room_id] = room_chat_count.get(room_id, 0) + 1
             
-            # 批量更新 rooms 表
             for room_id, chat_inc in room_chat_count.items():
                 await self.db['rooms'].update_one(
                     {"room_id": room_id},
@@ -412,72 +370,9 @@ class AsyncMongoDBHandler:
                 
         except Exception as e:
             logger.error(f"❌ [DB] 刷新弹幕异常: {e}")
-    async def insert_live_stat(self, data: dict):
-        """
-        【新增】异步保存直播间统计快照 (Redis 缓冲)
-        """
-        if not data: return
-        try:
-            # 确保时间字段存在
-            if isinstance(data.get('created_at'), str) or not data.get('created_at'):
-                data['created_at'] = datetime.now()
 
-            # 序列化并推入 Redis List
-            redis_client = get_redis()
-            json_data = json.dumps(data, default=datetime_serializer)
-            await redis_client.rpush(self.REDIS_STATS_KEY, json_data)
-            
-            # 检查是否需要批量写入
-            # 统计数据每5秒才有一条，频率比弹幕低，可以适当放宽 Buffer 检查
-            buffer_size = await redis_client.llen(self.REDIS_STATS_KEY)
-            
-            # 这里的 BATCH_SIZE 可以复用类的配置，或者设小一点
-            if buffer_size >= 100 or (time.time() - self.LAST_WRITE_TIME > self.BUFFER_TIMEOUT):
-                await self.flush_stat_buffer()
-        except Exception as e:
-            logger.error(f"❌ [DB] 缓冲统计数据失败: {e}")
-    # --------------------------------------------------------------------------
-# db.py -> AsyncMongoDBHandler
-
-    async def flush_stat_buffer(self):
-        """【新增】刷新统计缓冲区 -> live_stats"""
-        try:
-            redis_client = get_redis()
-            
-            # 1. 每次处理 500 条，防止内存爆炸
-            BATCH_COUNT = 500
-            
-            # 使用 lpop count (Redis 6.2+) 获取数据
-            raw_data_list = await redis_client.lpop(self.REDIS_STATS_KEY, count=BATCH_COUNT)
-            
-            if not raw_data_list:
-                return
-
-            # 2. 反序列化
-            current_batch = []
-            for raw in raw_data_list:
-                try:
-                    data = json.loads(raw)
-                    data = datetime_deserializer(data)
-                    current_batch.append(data)
-                except: pass
-            
-            if not current_batch: 
-                return
-
-            # 3. 写入 MongoDB
-            try:
-                await self.db[self.COL_STATS].insert_many(current_batch, ordered=False)
-                # logger.debug(f"📈 [DB] 已写入 {len(current_batch)} 条统计记录")
-            except Exception as e:
-                logger.error(f"❌ [DB] 写入统计数据失败: {e}")
-                # 4. 【回滚】写入失败，将数据塞回 Redis 头部，等待下次重试
-                if raw_data_list:
-                     await redis_client.lpush(self.REDIS_STATS_KEY, *raw_data_list)
-
-        except Exception as e:
-            logger.error(f"❌ [DB] 刷新统计buffer异常: {e}")
     async def update_room_stats(self, room_id, stats: dict):
+        """更新房间状态 (仍保留，因为是更新 rooms 表)"""
         if not room_id or not stats: return
         try:
             update_fields = {"updated_at": datetime.now()}
@@ -528,13 +423,11 @@ class AsyncMongoDBHandler:
         except Exception as e:
             logger.error(f"❌ [DB] 递增统计失败: {e}")
 
-# db.py -> AsyncMongoDBHandler -> close
-
     async def close(self):
         logger.info("💾 正在将 Redis 缓冲区数据写入 MongoDB...")
         await self.flush_chat_buffer()
         await self.flush_gift_buffer()
-        await self.flush_stat_buffer()  # 【新增】刷新统计数据
+        # 移除了 flush_stat_buffer
         self.client.close()
         logger.info("👋 MongoDB 连接已关闭")
 
@@ -553,10 +446,10 @@ class AsyncMongoDBHandler:
         except Exception:
             pass
         return 0
+
     async def get_all_cookies(self):
         """获取所有 Cookie"""
         cookies = []
-        # 注意：这里要处理一下判空，防止返回 [None]
         async for doc in self.db['settings_cookies'].find({}, {"_id": 0}):
             if doc.get('cookie'):
                 cookies.append(doc['cookie'])
@@ -565,7 +458,6 @@ class AsyncMongoDBHandler:
     async def add_cookie(self, cookie_str: str):
         """添加一个 Cookie"""
         if not cookie_str: return
-        # 使用 $addToSet 保证不重复添加
         await self.db['sys_config'].update_one(
             {"key": "douyin_cookies"},
             {"$addToSet": {"cookies": cookie_str}},
@@ -577,6 +469,42 @@ class AsyncMongoDBHandler:
         if not cookie_str: return
         await self.db['settings_cookies'].delete_one({"cookie": cookie_str})
         logger.info(f"🗑️ [DB] 已移除失效 Cookie: {cookie_str[:20]}...")
+    async def clear_zombie_rooms(self, timeout_seconds=180):
+        """
+        清理僵尸房间：
+        将状态为直播中(1)但超时未更新的房间标记为结束。
+        使用 updated_at 作为结束时间，更加精确。
+        """
+        try:
+            # 计算超时阈值
+            threshold_time = datetime.now() - timedelta(seconds=timeout_seconds)
+            
+            # 1. 查找条件：直播中 且 最后更新时间早于阈值
+            query = {
+                "live_status": 1,
+                "updated_at": {"$lt": threshold_time}
+            }
+            
+            # 2. 更新操作 (注意：这里是一个列表 []，这是 MongoDB 4.2+ 的聚合更新语法)
+            # $updated_at 引用的是文档自身的字段值
+            update_pipeline = [
+                {
+                    "$set": {
+                        "live_status": 4,
+                        "room_status": 4,
+                        "end_time": "$updated_at",     # <--- 核心修改：使用该文档最后一次更新的时间
+                        "end_reason": "zombie_cleanup" # 标记原因
+                    }
+                }
+            ]
+            
+            result = await self.db['rooms'].update_many(query, update_pipeline)
+            
+            if result.modified_count > 0:
+                logger.warning(f"🧟‍♂️ [DB] 清理了 {result.modified_count} 个僵尸直播间 (判定结束时间为最后活跃时刻)")
+                
+        except Exception as e:
+            logger.error(f"❌ [DB] 清理僵尸房间失败: {e}")  
         
         
         

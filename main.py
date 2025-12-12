@@ -11,7 +11,7 @@ from gift_deduplicator import AsyncGiftDeduplicator
 from monitor import AsyncDouyinLiveMonitor
 from liveMan import AsyncDouyinLiveWebFetcher
 from redis_client import init_redis, close_redis
-
+from datetime import datetime,timedelta
 # --- 配置日志 ---
 log_dir = "logs"
 if not os.path.exists(log_dir):
@@ -72,12 +72,23 @@ async def start_recorder_task(web_rid, nickname, start_follower_count, db, gift_
     finally:
         if fetcher: await fetcher.stop()
         logger.info(f"🏁 [任务结束] {nickname}")
-
+async def zombie_cleaner(db_handler):
+    """延迟启动的看门狗"""
+    logger.info("🐶 [看门狗] 正在待命，将在 5分钟 后开始首次清理...")
+    await asyncio.sleep(300) # <--- 关键：启动后先睡 5 分钟，给 LiveMan 重连的时间
+    
+    while True:
+        try:
+            # 正常循环，每 60 秒检查一次
+            await db_handler.clear_zombie_rooms(timeout_seconds=180) 
+        except Exception as e:
+            logger.error(f"❌ 看门狗报错: {e}")
+        await asyncio.sleep(60)
 async def main():
     # 1. 初始化数据库
     db = AsyncMongoDBHandler()
     await db.init_indexes()
-
+    asyncio.create_task(zombie_cleaner(db))
     # 2. 初始化全局 Redis 连接
     await init_redis("redis://localhost:6379/0")
 

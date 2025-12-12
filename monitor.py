@@ -247,9 +247,6 @@ class AsyncDouyinLiveMonitor:
                         else:
                             logger.warning(f"⚠️ [Monitor] 放弃任务 (无 web_rid): {live_info.get('nickname')}")
                 
-                elif raw_status == 2:
-                     # 🟢 对于 status=2，我们只记录日志（上面已经存库了），不添加到 live_users
-                     logger.info(f"👤 [Monitor] 发现嘉宾连麦 (已存库/跳过录制): {user.get('nickname')}")
 
             # --- 翻页判断 ---
             has_more = data.get('has_more', False)
